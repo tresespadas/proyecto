@@ -1,0 +1,46 @@
+Vagrant.configure("2") do |config|
+  #config.vm.box = "generic/ubuntu2204"
+  #config.vm.hostname = "hostname"
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+  end
+  config.vm.define :master do |master|
+    master.vm.box ="generic/ubuntu2204"
+    master.vm.hostname = "master"
+    master.vm.network :private_network,
+      libvirt__network_name: "red-interna",
+      libvirt__dhcp_enabled: false,
+      ip: "10.20.30.10",
+      libvirt__forward_mode: "none"
+    master.vm.provider :libvirt do |libvirt|
+      libvirt.memory = 4096
+      libvirt.cpus = 2
+    end
+  end
+  config.vm.define :worker1 do |worker1|
+    worker1.vm.box ="generic/ubuntu2204"
+    worker1.vm.hostname = "worker1"
+    worker1.vm.network :private_network,
+      libvirt__network_name: "red-interna",
+      libvirt__dhcp_enabled: false,
+      ip: "10.20.30.11",
+      libvirt__forward_mode: "none"
+    worker1.vm.provider :libvirt do |libvirt|
+      libvirt.memory = 2048
+      libvirt.cpus = 2
+    end
+  end
+  config.vm.define :worker2 do |worker2|
+    worker2.vm.box ="generic/ubuntu2204"
+    worker2.vm.hostname = "worker2"
+    worker2.vm.network :private_network,
+      libvirt__network_name: "red-interna",
+      libvirt__dhcp_enabled: false,
+      ip: "10.20.30.12",
+      libvirt__forward_mode: "none"
+    worker2.vm.provider :libvirt do |libvirt|
+      libvirt.memory = 2048
+      libvirt.cpus = 2
+    end
+  end
+end
