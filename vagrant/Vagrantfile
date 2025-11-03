@@ -1,41 +1,86 @@
-# -*- mode: ruby -*-
-# vi: set ft=ruby :
+# Vagrantfile for a 3-node Kubernetes cluster (1 master + 2 workers)
+# Provider: libvirt
+# Base box: generic/ubuntu2204
+
+BOX_IMAGE   = "generic/ubuntu2204"
+MASTER_IP   = "10.10.10.10"
+WORKER1_IP  = "10.10.10.11"
+WORKER2_IP  = "10.10.10.12"
+SSH_PUB_KEY = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip rescue ""
 
 Vagrant.configure("2") do |config|
-  config.vm.box = "generic/ubuntu2204"
+  config.vm.box = BOX_IMAGE
+  config.vm.synced_folder ".", "/vagrant", disabled: true
 
-  config.vm.provider :libvirt do |libvirt|
-    libvirt.driver = "kvm"
+  # Optional: keep hostmanager if installed
+  if Vagrant.has_plugin?("vagrant-hostmanager")
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_host = true
+    config.hostmanager.manage_guest = false
   end
 
-  config.ssh.insert_key = false
-  config.ssh.username = "vagrant"
-  config.ssh.password = "vagrant"
-  config.vm.boot_timeout = 600
+  # Provider setup
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.memory = 2048
+    libvirt.cpus = 2
+  end
 
-  nodes = {
-    master:  { memory: 4096, cpus: 2 },
-    worker1: { memory: 2048, cpus: 2 },
-    worker2: { memory: 2048, cpus: 2 }
-  }
+  # Common provisioning for all nodes
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "[INFO] Installing Python 3 and pip..."
+    apt-get update -y
+    apt-get install -y python3 python3-apt python3-pip
+  SHELL
 
-  nodes.each do |name, params|
-    config.vm.define name do |node|
-      node.vm.hostname = name.to_s
+  # Inject host's SSH key (so Kubespray can connect)
+  if !SSH_PUB_KEY.empty?
+    config.vm.provision "shell", inline: <<-SHELL
+      install -m 0700 -d /root/.ssh
+      echo "#{SSH_PUB_KEY}" >> /root/.ssh/authorized_keys
+      chmod 0600 /root/.ssh/authorized_keys
+    SHELL
 
-      # Don't define any network: default libvirt network will be used
+    config.vm.provision "shell", inline: <<-SHELL, privileged: false
+      mkdir -p ~/.ssh
+      echo "#{SSH_PUB_KEY}" >> ~/.ssh/authorized_keys
+      chmod 600 ~/.ssh/authorized_keys
+    SHELL
+  end
 
-      node.vm.provider :libvirt do |libvirt|
-        libvirt.memory = params[:memory]
-        libvirt.cpus   = params[:cpus]
-      end
+  # --- Master node ---
+  config.vm.define "master" do |node|
+    node.vm.hostname = "master"
+    node.vm.network :private_network,
+      ip: MASTER_IP,
+      libvirt__network_name: "k8s_network",
+      libvirt__dhcp_enabled: false,
+      libvirt__forward_mode: "none"
 
-      node.vm.provision "shell", inline: <<-SHELL
-        hostnamectl set-hostname #{name}
-        apt-get update -y
-        apt-get install -y python3 python3-apt pip
-      SHELL
+    node.vm.provider :libvirt do |libvirt|
+      libvirt.memory = 4096
+      libvirt.cpus = 2
     end
+  end
+
+  # --- Worker 1 ---
+  config.vm.define "worker1" do |node|
+    node.vm.hostname = "worker1"
+    node.vm.network :private_network,
+      ip: WORKER1_IP,
+      libvirt__network_name: "k8s_network",
+      libvirt__dhcp_enabled: false,
+      libvirt__forward_mode: "none"
+  end
+
+  # --- Worker 2 ---
+  config.vm.define "worker2" do |node|
+    node.vm.hostname = "worker2"
+    node.vm.network :private_network,
+      ip: WORKER2_IP,
+      libvirt__network_name: "k8s_network",
+      libvirt__dhcp_enabled: false,
+      libvirt__forward_mode: "none"
   end
 end
 
